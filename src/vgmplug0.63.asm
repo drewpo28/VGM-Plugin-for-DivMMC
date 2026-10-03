@@ -187,6 +187,48 @@ stop_key:                                               ;
                 ld      (event), hl                     ;
                 jr      exit_play                       ;
 stop_eof:                                               ;
+; Естественный конец трека (0x66 / конец файла).        ;
+; 1) Прогресс-бар дорисовывается до конца (30 делений,  ;
+;    атрибуты #5961..#597E): пороги считаются по размеру;
+;    файла вместе с заголовком/GD3, и последние деления ;
+;    иначе могли остаться пустыми.                      ;
+; 2) Хвост: чип ещё TAIL_FRAMES кадров (~2 с) звучит    ;
+;    перед sound_off. Многие рипы кончаются сразу после ;
+;    key-off последних нот, и немедленное глушение      ;
+;    обрезало их затухание (release) - "съедался" конец.;
+;    Для треков с петлёй (loop offset != 0) хвост не    ;
+;    нужен: там ноты на конце данных не отпущены.       ;
+;    Пробел/Q во время хвоста - как обычное нажатие.    ;
+                exx                                     ; hl' - текущее деление бара
+fill_bar:                                               ;
+                ld      (hl), 27h                       ;
+                ld      a, l                            ;
+                cp      7Eh                             ; последнее деление
+                jr      nc, fill_bar_done               ;
+                inc     l                               ;
+                jr      fill_bar                        ;
+fill_bar_done:                                          ;
+                exx                                     ;
+                ld      a, (has_loop)                   ;
+                or      a                               ;
+                jr      nz, tail_done                   ;
+                ld      de, TAIL_FRAMES                 ;
+tail_loop:                                              ;
+                ld      bc, 7BFEh                       ; пробел / Q - прервать хвост
+                in      a, (c)                          ;
+                bit     0, a                            ;
+                jr      z, stop_key                     ;
+                ld      hl, 2692                        ; 2692 x 26 тактов = ~1/50 с
+tail_wait:                                              ;
+                dec     hl                              ;
+                ld      a, h                            ;
+                or      l                               ;
+                jr      nz, tail_wait                   ;
+                dec     de                              ;
+                ld      a, d                            ;
+                or      e                               ;
+                jr      nz, tail_loop                   ;
+tail_done:                                              ;
                 ld      hl, 0FFFFh                      ;
 exit_play:                                              ;
                 ld      (event), hl                     ;
@@ -396,9 +438,9 @@ wait_hl:                                                ; общий цикл о
 loop_delay:                                             ;
                 exx                                     ;
                 ld      (hl), 27h                       ;
-                ld      a, (ix+0)                       ;
-                cp      e                               ;
-                jr      nz, bar_noinc                   ;
+                ld      a, e                            ; e'=счётчик блоков; >= порога - шаг бара
+                cp      (ix+0)                          ; (было "=": если между паузами читалось
+                jr      c, bar_noinc                    ; >1 блока, порог проскакивал и бар вставал)
                 inc     ix                              ;
                 inc     l                               ;
 bar_noinc:                                              ;
@@ -473,7 +515,11 @@ fill_buf:                                               ;
                                                         ;
 move_bar:                                               ;
                 ld      b, 0                            ;
+                ld      a, e                            ;
+                cp      0FEh                            ; e' не выше 0FEh - не доходит до
+                jr      nc, move_bar_sat                ; стоп-байта 0FFh в конце таблицы bar
                 inc     e                               ;
+move_bar_sat:                                           ;
                 exx                                     ;
                 ld      hl, BUFF_START                  ;
                 ld      (bufPos), hl                    ;
@@ -746,6 +792,9 @@ gd3_offset:     ld      de, $0A07                       ;
                 call    read_gd3                        ;
                                                         ;
 data_offset:                                            ;
+                ld      bc, 1Ch                         ; loop offset: 0 - трек без петли
+                call    not_zero                        ;
+                ld      (has_loop), a                   ; a != 0 - есть петля
                 ld      hl, BUFF_START                  ;
                 ld      bc, 34h                         ;
                 add     hl, bc                          ;
@@ -2293,8 +2342,10 @@ vsize:          ds 3                                    ;
 track:          ds 35                                   ;
 game:           ds 35                                   ;
 bar:            ds 29                                   ;
+                db 0FFh                                 ; стоп-байт: дальше 29 порогов бар не идёт
 curr_chip:      db 0                                    ; 1-OPL, 2-AY38910, 3-SN76489, 4-YM2203, 5-SAA1099, 6-YM2413, 7-2xSAA1099, 8-2xSN76489
 chips_mask:     db 0                                    ; биты MSK_* - чипы файла
+has_loop:       db 0                                    ; != 0 - в заголовке задан loop offset
 txt_title:      db $80, $84, $84, $84, $84, $84, $84, $84, $84, $84,$84, $84, " VGM Player 0.63 " , $84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$84,$81,0;
 txt_file:       db $87, "File:                                   ", $85,0;
 txt_chip:       db $87, "Chip:                                   ", $85,0;
@@ -2324,6 +2375,7 @@ txt_notdet:     db "NOT DETECTED", 0                    ;
 ; Карта памяти: код/данные плагина $8000..<$9300 (проверяется
 ; ASSERT'ом), рабочая область пересчёта клока $9300..$994F,
 ; файловый буфер $9A00..$9BFF. Итого плагин занимает $8000-$9BFF.
+TAIL_FRAMES:    EQU 100                                 ; хвост после конца трека, кадров (~2 с)
 BUFF_START:     EQU $9A00                               ;
 BUFF_END:       EQU $9C                                 ;
                                                         ;
