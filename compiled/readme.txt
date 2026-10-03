@@ -1,4 +1,4 @@
--VGM Player (v0.63)
+-VGM Player (v0.64)
     VGM Player is a simple plugin for the NMI browser (ESXDOS) that allows playback of VGM audio files on ZX Spectrum-compatible hardware.
 
 -Features
@@ -15,10 +15,25 @@
     Lightweight and fast streaming playback
 
 -Status
-    This is alpha version (0.63).
+    This is alpha version (0.64).
     Expect bugs, incomplete features, and limited compatibility.
 
 -Change history
+    0.64 (3 October 2026)
+      Progress bar fix: the bar advanced only when the block
+      counter was exactly equal to the next threshold, so if
+      more than one 512-byte block was read between two waits
+      (e.g. a long register-init sequence at the start of an
+      OPL file) the threshold was skipped and the bar stayed on
+      its first cell for the whole track. It now advances when
+      the counter reaches or passes the threshold, and is drawn
+      to the end when the track finishes.
+      End of track no longer cut: many rips end right after the
+      key-off of the last notes, and the player silenced the
+      chip immediately, cutting the release of those notes.
+      After the end of a non-looping track the chip now keeps
+      sounding for ~2 seconds before being muted (Space/Q
+      skip it); tracks with a loop point are muted at once.
     0.63 (2 September 2026)
       sound_off now mutes every chip declared in the VGM header
       (chips_mask), not only the chip shown in the "Chip:" line:
@@ -54,20 +69,6 @@
       passed through untouched.
       The plugin now uses RAM up to #9BFF (frequency scaling
       tables and the file buffer moved to #9300-#9BFF).
-      Progress bar fix: the bar advanced only when the block
-      counter was exactly equal to the next threshold, so if
-      more than one 512-byte block was read between two waits
-      (e.g. a long register-init sequence at the start of an
-      OPL file) the threshold was skipped and the bar stayed on
-      its first cell for the whole track. It now advances when
-      the counter reaches or passes the threshold, and is drawn
-      to the end when the track finishes.
-      End of track no longer cut: many rips end right after the
-      key-off of the last notes, and the player silenced the
-      chip immediately, cutting the release of those notes.
-      After the end of a non-looping track the chip now keeps
-      sounding for ~2 seconds before being muted (Space/Q
-      skip it); tracks with a loop point are muted at once.
     0.62 (1 September 2026, by azesmbog)
       Added SAA1099 / 2x SAA1099 (VGM cmd 0xBD, ports #01FF/#00FF
       and #03FF/#02FF), YM2413 (cmd 0x51, ports #C0/#C1) and
